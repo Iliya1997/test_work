@@ -36,7 +36,7 @@ class csvWork extends Command
         $file_name = $this->options()['file'][0];
 
         try {
-            $csv_service = new CsvService($file_name, empty($this->options()['test']));
+            $csv_service = new CsvService($file_name, !empty($this->options()['test']) && $this->options()['test'][0] === 'true');
 
             $csv_service->readCsv();
 

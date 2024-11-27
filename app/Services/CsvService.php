@@ -150,7 +150,7 @@ class CsvService
                 continue;
             }
 
-            if ($this->test_mode) {
+            if (!$this->test_mode) {
                 if ($this->updateCsvRow($record)) {
                     $this->total_success_count++;
                     continue;
