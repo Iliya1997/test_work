@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\CsvException;
 use App\Models\ProductData;
 use Illuminate\Support\Facades\DB;
 use League\Csv\Exception;
@@ -11,6 +12,8 @@ use League\Csv\SyntaxError;
 
 class CsvService
 {
+    const EXTENSION = 'csv';
+
     private Reader $csv;
 
     private bool $test_mode;
@@ -21,6 +24,8 @@ class CsvService
 
     private int $total_success_count = 0;
 
+    private string $file_name;
+
     private array $headers = [
         "Product Code",
         "Product Name",
@@ -30,12 +35,15 @@ class CsvService
         "Discontinued"
     ];
 
-    public function __construct(string $file_path, bool $test_mode = false)
+    public function __construct(string $file_name, bool $test_mode = false)
     {
-        $stream = fopen($file_path, 'r');
-        $this->csv = Reader::createFromStream($stream);
-
         $this->test_mode = $test_mode;
+        $this->file_name = $file_name;
+
+        $this->formatExtension();
+
+        $stream = fopen(storage_path() . '/csv/' . $this->file_name, 'r');
+        $this->csv = Reader::createFromStream($stream);
     }
 
     /**
@@ -48,7 +56,7 @@ class CsvService
 
         foreach ($headers as $header) {
             if (!in_array($header, $this->headers)) {
-                throw new \Exception("Invalid header " . $header);
+                throw new \Exception("Invalid header: " . $header, CsvException::INVALID_HEADER);
             }
         }
     }
@@ -56,11 +64,24 @@ class CsvService
     private function updateCsvRow($record): bool {
         $data = DB::table('product_data')->where('productCode', $record['Product Code']);
 
-        if ($data->first()) {
+        $first = $data->first();
+
+        if ($first) {
+            if ($first->discontinued == (!empty($record['Discontinued']) && $record['Discontinued'] === 'yes') &&
+                $first->productCost === (float)$record['Cost in GBP'] &&
+                $first->productStock === (int)$record['Stock'] &&
+                $first->productDesc === $record['Product Description'] &&
+                $first->productName === $record['Product Name']
+            ) {
+                return true;
+            }
+
             $data->update([
                 'discontinued' => !empty($record['Discontinued']) && $record['Discontinued'] === 'yes',
                 'productCost' => (float)$record['Cost in GBP'],
                 'productStock' => (int)$record['Stock'],
+                'productDesc' => $record['Product Description'],
+                'productName' => $record['Product Name'],
             ]);
 
             $this->updated_rows[] = $record['Product Code'];
@@ -99,7 +120,7 @@ class CsvService
     }
 
     private function checkConditions($record): bool {
-        $cost = floatval($record['Cost in GBP']);
+        $cost  = floatval($record['Cost in GBP']);
         $stock = floatval($record['Stock']);
 
         if ($cost < 5 || $stock < 10) {
@@ -131,6 +152,7 @@ class CsvService
 
             if ($this->test_mode) {
                 if ($this->updateCsvRow($record)) {
+                    $this->total_success_count++;
                     continue;
                 }
 
@@ -148,5 +170,22 @@ class CsvService
             'updated_rows'      => $this->updated_rows,
             'csv_report'        => $this->csv->toString(),
         ];
+    }
+
+    /**
+     * @throws \Exception
+     */
+    public function formatExtension(): void {
+        $file_array = explode('.', $this->file_name);
+
+        if (count($file_array) === 1) {
+            $this->file_name = $this->file_name . '.' .  self::EXTENSION;
+        } else {
+            $extension = array_pop($file_array);
+
+            if ($extension !== self::EXTENSION) {
+                throw new \Exception("Invalid extension $extension. We can only use " . self::EXTENSION . ' extension', CsvException::INVALID_EXTENSION);
+            }
+        }
     }
 }
