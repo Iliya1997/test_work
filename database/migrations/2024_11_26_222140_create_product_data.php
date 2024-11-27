@@ -13,7 +13,7 @@ return new class extends Migration
             $table->string('productName', 50);
             $table->string('productDesc');
             $table->string('productCode', 10)->unique();
-            $table->boolean('discontinued');
+            $table->timestamp('discontinued')->nullable();
             $table->timestamp('updatedAt')->useCurrent()->useCurrentOnUpdate();
             $table->timestamp('createdAt')->useCurrent();
         });

@@ -9,6 +9,9 @@ class ProductData extends Model
 {
     use HasFactory;
 
+    const CREATED_AT = 'createdAt';
+    const UPDATED_AT = 'updatedAt';
+
     /**
      * @var string
      */

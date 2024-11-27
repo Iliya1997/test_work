@@ -14,6 +14,13 @@ class CsvService
 {
     const EXTENSION = 'csv';
 
+    const PRODUCT_CODE_HEADER = 'Product Code';
+    const PRODUCT_NAME_HEADER = 'Product Name';
+    const PRODUCT_DESCRIPTION_HEADER = 'Product Description';
+    const STOCK_HEADER = 'Stock';
+    const COST_HEADER = 'Cost in GBP';
+    const DISCONTINUED_HEADER = 'Discontinued';
+
     private Reader $csv;
 
     private bool $test_mode;
@@ -27,12 +34,12 @@ class CsvService
     private string $file_name;
 
     private array $headers = [
-        "Product Code",
-        "Product Name",
-        "Product Description",
-        "Stock",
-        "Cost in GBP",
-        "Discontinued"
+        self::PRODUCT_CODE_HEADER,
+        self::PRODUCT_NAME_HEADER,
+        self::PRODUCT_DESCRIPTION_HEADER,
+        self::STOCK_HEADER,
+        self::COST_HEADER,
+        self::DISCONTINUED_HEADER,
     ];
 
     public function __construct(string $file_name, bool $test_mode = false)
@@ -62,29 +69,37 @@ class CsvService
     }
 
     private function updateCsvRow($record): bool {
-        $data = DB::table('product_data')->where('productCode', $record['Product Code']);
+        $data = DB::table('product_data')->where('productCode', $record[self::PRODUCT_CODE_HEADER]);
 
         $first = $data->first();
 
         if ($first) {
-            if ($first->discontinued == (!empty($record['Discontinued']) && $record['Discontinued'] === 'yes') &&
-                $first->productCost === (float)$record['Cost in GBP'] &&
-                $first->productStock === (int)$record['Stock'] &&
-                $first->productDesc === $record['Product Description'] &&
-                $first->productName === $record['Product Name']
+            $discontinued = null;
+
+            if (is_null($first->discontinued) && !empty($record['Discontinued']) && trim($record[self::DISCONTINUED_HEADER]) === 'yes') {
+                $discontinued = date('Y-m-d H:i:s');
+            } else if (!empty($record[self::DISCONTINUED_HEADER]) && trim($record[self::DISCONTINUED_HEADER]) === 'yes') {
+                $discontinued = $first->discontinued;
+            }
+
+            if ($first->discontinued == $discontinued &&
+                $first->productCost === (float)$record[self::COST_HEADER] &&
+                $first->productStock === (int)$record[self::STOCK_HEADER] &&
+                $first->productDesc === $record[self::PRODUCT_DESCRIPTION_HEADER] &&
+                $first->productName === $record[self::PRODUCT_NAME_HEADER]
             ) {
                 return true;
             }
 
             $data->update([
-                'discontinued' => !empty($record['Discontinued']) && $record['Discontinued'] === 'yes',
-                'productCost' => (float)$record['Cost in GBP'],
-                'productStock' => (int)$record['Stock'],
-                'productDesc' => $record['Product Description'],
-                'productName' => $record['Product Name'],
+                'discontinued' => $discontinued,
+                'productCost' => (float)$record[self::COST_HEADER],
+                'productStock' => (int)$record[self::STOCK_HEADER],
+                'productDesc' => $record[self::PRODUCT_DESCRIPTION_HEADER],
+                'productName' => $record[self::PRODUCT_NAME_HEADER],
             ]);
 
-            $this->updated_rows[] = $record['Product Code'];
+            $this->updated_rows[] = $record[self::PRODUCT_CODE_HEADER];
 
             return true;
         }
@@ -95,24 +110,24 @@ class CsvService
     private function saveCsvRow($record): void
     {
         $product_data = new ProductData();
-        $product_data->productName = $record['Product Name'];
-        $product_data->productDesc = $record['Product Description'];
-        $product_data->productCode = $record['Product Code'];
-        $product_data->discontinued = !empty($record['Discontinued']) && $record['Discontinued'] === 'yes';
-        $product_data->productCost = (float)$record['Cost in GBP'];
-        $product_data->productStock = (int)$record['Stock'];
+        $product_data->productName = $record[self::PRODUCT_NAME_HEADER];
+        $product_data->productDesc = $record[self::PRODUCT_DESCRIPTION_HEADER];
+        $product_data->productCode = $record[self::PRODUCT_CODE_HEADER];
+        $product_data->discontinued = !empty($record[self::DISCONTINUED_HEADER]) && $record[self::DISCONTINUED_HEADER] === 'yes' ? date('Y-m-d H:i:s') : null;
+        $product_data->productCost = (float)$record[self::COST_HEADER];
+        $product_data->productStock = (int)$record[self::STOCK_HEADER];
 
         $product_data->save();
     }
 
     private function checkFields($record): bool {
-        if (empty($record['Product Name']) || empty($record['Product Description']) || empty($record['Product Code'])) {
-            $this->failed_inserted[] = $record['Product Code'];
+        if (empty($record[self::PRODUCT_NAME_HEADER]) || empty($record[self::PRODUCT_DESCRIPTION_HEADER]) || empty($record[self::PRODUCT_CODE_HEADER])) {
+            $this->failed_inserted[] = $record[self::PRODUCT_CODE_HEADER];
             return false;
         }
 
-        if (empty($record['Cost in GBP']) || is_null($record['Stock'])) {
-            $this->failed_inserted[] = $record['Product Code'];
+        if (empty($record[self::COST_HEADER]) || is_null($record[self::STOCK_HEADER])) {
+            $this->failed_inserted[] = $record[self::PRODUCT_CODE_HEADER];
             return false;
         }
 
@@ -120,14 +135,12 @@ class CsvService
     }
 
     private function checkConditions($record): bool {
-        $cost  = floatval($record['Cost in GBP']);
-        $stock = floatval($record['Stock']);
+        $cost  = floatval($record[self::COST_HEADER]);
+        $stock = floatval($record[self::STOCK_HEADER]);
 
         if ($cost < 5 || $stock < 10) {
             return false;
         } else if ($cost > 1000) {
-            return false;
-        } else if (!empty($record['Discontinued']) && $record['Discontinued'] !== 'yes') {
             return false;
         }
 
